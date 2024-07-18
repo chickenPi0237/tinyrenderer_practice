@@ -14,7 +14,10 @@ const int height = 800;
 const int width_2 = 800;
 const int height_2 = 800;
 Model* model;
-Vec3f camera(0, 0, 3);
+Vec3f light_dir = Vec3f(-1,1,-1).normalize();
+//Vec3f camera(0, 0, 3);
+Vec3f eye(1,1,3);
+Vec3f center(0,0,0);
 
 void line(Vec2i p0, Vec2i p1, TGAImage &image, TGAColor color) {
     bool steep = false;
@@ -212,7 +215,7 @@ void triangle_2(Vec3f* pts, float* zbuffer, TGAImage &image, TGAColor color){
     }
 }
 
-void trinagle_texture(Vec3f* pts, Vec2f *v_pts, float* zbuffer, TGAImage &image, TGAImage &t_image, const float intensity){
+void trinagle_texture_Flat_shading(Vec3f* pts, Vec2f *v_pts, float* zbuffer, TGAImage &image, TGAImage &t_image, float intensity){
     //std::pair<Vec2i, Vec2i> bbox = foundBoundingBox(t0, t1, t2);
     Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
     Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
@@ -256,6 +259,53 @@ void trinagle_texture(Vec3f* pts, Vec2f *v_pts, float* zbuffer, TGAImage &image,
     }
 }
 
+void trinagle_texture_Gouraud_shading(Vec3f* pts, Vec2f *v_pts, float* zbuffer, TGAImage &image, TGAImage &t_image, float* intensity){
+    //std::pair<Vec2i, Vec2i> bbox = foundBoundingBox(t0, t1, t2);
+    Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
+    Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+    Vec2f clamp(image.get_width()-1, image.get_height()-1);
+    for (int i=0; i<3; i++) {
+        for (int j=0; j<2; j++) {
+            //std::cout << pts[i][j] << " ";
+            bboxmin[j] = std::max(0.f,      std::min(bboxmin[j], pts[i][j]));
+            bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts[i][j]));
+        }
+        //std::cout << std::endl;
+    }
+    // std::cout << pts[0] << pts[1] << pts[2];
+    // std::cout << bboxmax[0] << " " << bboxmax[1] << " ";
+    // std::cout << bboxmin[0] << " " << bboxmin[1] << " <> " << std::endl;
+    // std::cout << bboxmax.x << " " << bboxmax.y << " ";
+    // std::cout << bboxmin.x << " " << bboxmin.y << std::endl;
+    //return ;
+    Vec3f P;
+    Vec2f T;
+    for(P.x=bboxmin.x; P.x<=bboxmax.x; P.x++){
+        for(P.y=bboxmin.y; P.y<=bboxmax.y; P.y++){
+            //Vec2i t[3] = {Vec2f(t0.x, t0.y), Vec2i(t1.x, t1.y), Vec2i(t2.x, t2.y)};
+            Vec3f bc_screen = barycentric(pts, P);
+            if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) { continue; }
+            P.z = 0.;
+            T.x = 0.;
+            T.y = 0.;
+            float v_intensity = 0.0;
+            for(int i=0; i<3; ++i){
+                P.z += pts[i][2] * bc_screen[i];
+                T.x += v_pts[i][0] * bc_screen[i];
+                T.y += v_pts[i][1] * bc_screen[i];
+                v_intensity += (intensity[i] * bc_screen[i]);
+            }
+            if(zbuffer[int(P.x+P.y*width_2)]<P.z) {
+                //TGAColor t_color = t_image.get(int(T.x), int(T.y));
+                TGAColor t_color = model->diffuse(Vec2i(T)); 
+                zbuffer[int(P.x+P.y*width_2)] = P.z;
+                if(v_intensity >= 0)
+                    image.set(P.x, P.y, TGAColor(v_intensity*t_color.r, v_intensity*t_color.g, v_intensity*t_color.b, 255));
+            }
+        }
+    }
+}
+
 Matrix v2m(Vec3f v){
     Matrix m(4,1);
     m[0][0] = v.x;
@@ -283,11 +333,38 @@ Matrix createViewPort(int w, int h, int d){
     return m;
 }
 
+Matrix createModelView(Vec3f eye, Vec3f center, Vec3f up){
+    Matrix transfer = Matrix::identity(4);
+    Matrix rotate = Matrix::identity(4);
+    Matrix view;
+    //look at -z axis,
+    Vec3f z = (eye-center).normalize();
+    Vec3f x = (up^z).normalize();
+    Vec3f y = (z^x).normalize();
+    for(int i=0; i<3; ++i){
+        rotate[0][i] = x[i];
+        rotate[1][i] = y[i];
+        rotate[2][i] = z[i];
+        transfer[i][3] = -eye[i];
+    }
+    std::cout << transfer << rotate;
+    view = rotate*transfer;
+    //std::cout << view;
+    return view;
+}
+
 int main(int argc, char** argv) {
 
     Matrix Projection = Matrix::identity(4);
-    Projection[3][2] = -1.f/camera.z;
+    Projection[3][2] = -1.f/(center-eye).norm();
     Matrix ViewPort = createViewPort(width_2, height_2, 255);
+    Matrix View = createModelView(eye, center, Vec3f(0,1,0));
+
+    std::cerr << View << std::endl;
+    std::cerr << Projection << std::endl;
+    std::cerr << ViewPort << std::endl;
+    Matrix z = (ViewPort*Projection*View);
+    std::cerr << z << std::endl;
 
     TGAImage texture;
     texture.read_tga_file("african_head_diffuse.tga");
@@ -299,14 +376,14 @@ int main(int argc, char** argv) {
         zbuffer[i] = -std::numeric_limits<float>::max();
     }
     TGAImage image2(width_2, height_2, TGAImage::RGB);
-    Vec3f light_dir(0,0,-1);
-    light_dir.normalize();
+    
     for (int i=0; i<model->nfaces(); i++) {
         //every face contain a triangle represented by 3 vertics.
         std::vector<int> face = model->face(i);
         Vec3f screen_coords[3];
         Vec3f world_coords[3];
         Vec2f texture_coords[3];
+        float intensity[3];
         for (int j=0; j<3; j++) {
             Vec3f v = model->vert(face[j]);
             //Vec2f t_v = model->t_vert(model->texture(i)[j]);
@@ -316,7 +393,7 @@ int main(int argc, char** argv) {
             // time to add projection and viewport
             Vec3f float_err(0.5, 0.5, 0.5);
             //should add float_err, implement in converting Vec3i to Vec3f.
-            screen_coords[j] = Vec3i(m2v(ViewPort*Projection*v2m(v)));
+            screen_coords[j] = Vec3i(m2v(ViewPort*Projection*View*v2m(v)));
             //actually this part is viewport
             // screen_coords[j].x = int((screen_coords[j].x+1)*width_2/2.+.5);
             // screen_coords[j].y = int((screen_coords[j].y+1)*height_2/2.+.5);
@@ -324,6 +401,9 @@ int main(int argc, char** argv) {
             world_coords[j]  = v;
             //texture_coords[j] = Vec2f(int(t_v.x*texture.get_width()), int(t_v.y*texture.get_height()));
             texture_coords[j] = Vec2f(model->uv(i, j));
+            intensity[j] = model->norm(i, j)*light_dir;
+            //looking at -z axis, i thought vn is along +z axis.
+            intensity[j] = -intensity[j];
         }
         //if n = (world_coords[1]-world_coords[0])^(world_coords[2]-world_coords[0]); will show back side of face.
         //because of normal of surface could be two direction determinated by which vector cross product another vector
@@ -331,16 +411,18 @@ int main(int argc, char** argv) {
         Vec3f n = (world_coords[2]-world_coords[0])^(world_coords[1]-world_coords[0]);
         //normalize so the intensity will be -1 to 1.
         n.normalize();
-        float intensity = n*light_dir;
+        float intensity_flat = n*light_dir;
         //Back-face culling, if intensity is negative, it means back side of face. so can be ignored to draw.
-        if (intensity>0) {
-            //triangle_2(screen_coords, zbuffer, image2, TGAColor(intensity*255, intensity*255, intensity*255, 255));
-            trinagle_texture(screen_coords, texture_coords, zbuffer, image2, texture, intensity);
-        } 
+        if (intensity_flat>0) {
+            //trinagle_texture_Flat_shading(screen_coords, texture_coords, zbuffer, image2, texture, intensity_flat);
+        }
+
+        //Transformation of normal vectors still not done yet.
+        trinagle_texture_Gouraud_shading(screen_coords, texture_coords, zbuffer, image2, texture, intensity);
     }
 
     image2.flip_vertically(); // i want to have the origin at the left bottom corner of the image
-    image2.write_tga_file("face_projection_viewport_2.tga");
+    image2.write_tga_file("face_modelview_projection_viewport_Gouraud_shading_texture.tga");
 
     { // dump z-buffer (debugging purposes only)
         TGAImage zbimage(width_2, height_2, TGAImage::GRAYSCALE);
@@ -351,7 +433,7 @@ int main(int argc, char** argv) {
             }
         }
         zbimage.flip_vertically(); // i want to have the origin at the left bottom corner of the image
-        zbimage.write_tga_file("zbuffer_projection_viewport_2.tga");
+        zbimage.write_tga_file("zbuffer_modelview_projection_viewport_Gouraud_shading_texture.tga");
     }
 
     delete [] zbuffer;
