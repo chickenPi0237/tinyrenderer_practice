@@ -84,4 +84,6 @@ Vec2i Model::uv(int iface, int nvert) {
     return Vec2i(uv_[idx].x*diffusemap_.get_width(), uv_[idx].y*diffusemap_.get_height());
 }
 
-
+Vec3f Model::norm(int iface, int nvert){
+    return norms_[faces_[iface][nvert][2]].normalize();
+}
