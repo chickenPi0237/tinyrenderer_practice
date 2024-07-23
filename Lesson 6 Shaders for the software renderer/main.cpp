@@ -18,22 +18,31 @@ Vec3f    center(0,0,0);
 Vec3f        up(0,1,0);
 
 struct GouraudShader : public IShader {
-    Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+    //Vec3f varying_intensity; // written by vertex shader, read by fragment shader
     mat<2,3,float> varying_uv;
-
+    mat<4,4,float> uniform_m;
+    mat<4,4,float> uniform_mti;
 
     virtual Vec4f vertex(int iface, int nthvert) {
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
         gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
-        varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity
+        //after affine mapping, normal vector should mapped by inverse(transpose(map)).
+        //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         return gl_Vertex;
     }
 
     virtual bool fragment(Vec3f bar, TGAColor &color) {
-        float intensity = varying_intensity*bar;   // interpolate intensity for the current pixel
+        //float intensity = varying_intensity*bar;   // interpolate intensity for the current pixel
         Vec2f uv = varying_uv*bar;
-        intensity = std::min(1.0f, intensity);
+        //normal(Vec2f) read from normal map, which stored normal vector's xyz as rgb.
+        Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(uv))).normalize();
+        Vec3f i = proj<3>(uniform_m*embed<4>(light_dir)).normalize();
+        //if use my lookat() n*light_dir works.
+        float intensity = std::max(0.f, n*light_dir);
+        //author lookat() n*i works
+        //float intensity = std::max(0.f, n*i);
+
         //color = TGAColor(255, 255, 255)*intensity; // well duh
         color = model->diffuse(uv)*intensity; 
         return false;                              // no, we do not discard this pixel
@@ -62,19 +71,21 @@ int main(int argc, char** argv) {
     }
 
     GouraudShader shader;
+    shader.uniform_m = Projection*ModelView;
+    shader.uniform_mti = (Projection*ModelView).invert_transpose();
     for (int i=0; i<model->nfaces(); i++) {
         Vec4f screen_coords[3];
         for (int j=0; j<3; j++) {
             screen_coords[j] = shader.vertex(i, j);
         }
-        triangle(screen_coords, shader, image, zbuffer);
-        //triangle_my(screen_coords, shader, image, zbuffer_f);
+        //triangle(screen_coords, shader, image, zbuffer);
+        triangle_my(screen_coords, shader, image, zbuffer_f);
     }
 
     image.  flip_vertically(); // to place the origin in the bottom left corner of the image
     zbuffer.flip_vertically();
-    image.  write_tga_file("output_modified_author_texture.tga");
-    zbuffer.write_tga_file("zbuffer_modified_author_texture.tga");
+    image.  write_tga_file("output_my_normalmapping.tga");
+    zbuffer.write_tga_file("zbuffer_my_normalmapping.tga");
 
     // { // dump z-buffer (debugging purposes only)
     //     TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
