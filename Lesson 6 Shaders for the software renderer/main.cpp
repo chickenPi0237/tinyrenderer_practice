@@ -12,8 +12,8 @@ const int width  = 800;
 const int height = 800;
 
 //light_dir here is start from surface, previous leesson i use start from light point. btw light_dir = - light_dir_from_light_point
-Vec3f light_dir(1,1,1);
-Vec3f       eye(1,1,3);
+Vec3f light_dir(-1,0,0);
+Vec3f       eye(3,0,0);
 Vec3f    center(0,0,0);
 Vec3f        up(0,1,0);
 
@@ -37,11 +37,12 @@ struct GouraudShader : public IShader {
         Vec2f uv = varying_uv*bar;
         //normal(Vec2f) read from normal map, which stored normal vector's xyz as rgb.
         Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(uv))).normalize();
-        Vec3f i = proj<3>(uniform_m*embed<4>(light_dir)).normalize();
-        //if use my lookat() n*light_dir works.
-        float intensity = std::max(0.f, n*light_dir);
-        //author lookat() n*i works
-        //float intensity = std::max(0.f, n*i);
+        //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
+        //check comparison of no_light_transform/light_transform pictures. especially *l-100_e300
+        Vec3f i = proj<3>(uniform_mti*embed<4>(light_dir)).normalize();
+        
+        //float intensity = std::max(0.f, n*light_dir);
+        float intensity = std::max(0.f, n*i);
 
         //color = TGAColor(255, 255, 255)*intensity; // well duh
         color = model->diffuse(uv)*intensity; 
@@ -84,8 +85,8 @@ int main(int argc, char** argv) {
 
     image.  flip_vertically(); // to place the origin in the bottom left corner of the image
     zbuffer.flip_vertically();
-    image.  write_tga_file("output_my_normalmapping.tga");
-    zbuffer.write_tga_file("zbuffer_my_normalmapping.tga");
+    image.  write_tga_file("output_my_normalmapping_light_transformed_l-100_e300.tga");
+    zbuffer.write_tga_file("zbuffer_my_normalmapping_light_transformed_l-100_e300.tga");
 
     // { // dump z-buffer (debugging purposes only)
     //     TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
