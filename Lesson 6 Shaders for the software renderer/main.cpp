@@ -12,8 +12,8 @@ const int width  = 800;
 const int height = 800;
 
 //light_dir here is start from surface, previous leesson i use start from light point. btw light_dir = - light_dir_from_light_point
-Vec3f light_dir(-1,0,0);
-Vec3f       eye(3,0,0);
+Vec3f light_dir(1,1,1);
+Vec3f       eye(1,1,3);
 Vec3f    center(0,0,0);
 Vec3f        up(0,1,0);
 
@@ -39,13 +39,30 @@ struct GouraudShader : public IShader {
         Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(uv))).normalize();
         //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
         //check comparison of no_light_transform/light_transform pictures. especially *l-100_e300
+        //to my code, uniform_mti*light_dir is work, author use uniform_m.
         Vec3f i = proj<3>(uniform_mti*embed<4>(light_dir)).normalize();
-        
-        //float intensity = std::max(0.f, n*light_dir);
-        float intensity = std::max(0.f, n*i);
 
+        //author code phong-reflect model
+        // Vec3f r = (n*(n*i*2.f) - i).normalize();   // reflected light
+        // float spec = pow(std::max(r.z, 0.0f), model->specular(uv));
+        // //std::cout << model->specular(uv) << " ";
+        // float diff = std::max(0.f, n*i);
+        // TGAColor c = model->diffuse(uv);
+        // color = c;
+        // for (int i=0; i<3; i++) color[i] = std::min<float>(5 + c[i]*(0.8*diff + .6*spec), 255);
+
+        //blinn-phong reflection
+        Vec3f eye_transformed = proj<3>(uniform_mti*embed<4>(eye)).normalize();
+        int glossy_level = 50;
+        Vec3f h = (i+eye_transformed).normalize();
+        float spec = std::pow(std::max(n*h, 0.0f), glossy_level);
+        float diffuse = std::max(0.f, n*i);
+        float abiment = 5/255;
         //color = TGAColor(255, 255, 255)*intensity; // well duh
-        color = model->diffuse(uv)*intensity; 
+        TGAColor c = model->diffuse(uv);
+        color = c;
+        //normally sum of scalar coefficient must be equal to 1
+        for(int i=0; i<3; ++i) { color[i]=std::min<float>( c[i]*(0.1*abiment + 0.6*diffuse + 0.3*spec) ,255); }
         return false;                              // no, we do not discard this pixel
     }
 };
@@ -85,8 +102,8 @@ int main(int argc, char** argv) {
 
     image.  flip_vertically(); // to place the origin in the bottom left corner of the image
     zbuffer.flip_vertically();
-    image.  write_tga_file("output_my_normalmapping_light_transformed_l-100_e300.tga");
-    zbuffer.write_tga_file("zbuffer_my_normalmapping_light_transformed_l-100_e300.tga");
+    image.  write_tga_file("output_my_blinn-phone-reflection-2.tga");
+    zbuffer.write_tga_file("zbuffer_my_blinn-phone-reflection-2.tga");
 
     // { // dump z-buffer (debugging purposes only)
     //     TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
