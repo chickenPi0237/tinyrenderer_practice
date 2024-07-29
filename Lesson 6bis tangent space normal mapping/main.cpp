@@ -17,27 +17,112 @@ Vec3f       eye(1,1,3);
 Vec3f    center(0,0,0);
 Vec3f        up(0,1,0);
 
+// //from https://github.com/ssloy/tinyrenderer/blob/907bb561c38e7bd86db8d99678c0108f2e53d54d/main.cpp
+// somehow generate all black pic
+// struct authorShader : public IShader {
+//     mat<2,3,float> varying_uv;  // triangle uv coordinates, written by the vertex shader, read by the fragment shader
+//     mat<4,3,float> varying_tri; // triangle coordinates (clip coordinates), written by VS, read by FS
+//     mat<3,3,float> varying_nrm; // normal per vertex to be interpolated by FS
+//     mat<3,3,float> ndc_tri;     // triangle in normalized device coordinates
+//     Vec3f light_dir_transformed = proj<3>((Projection*ModelView*embed<4>(light_dir, 0.f))).normalize();
+
+//     virtual Vec4f vertex(int iface, int nthvert) {
+//         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
+//         varying_nrm.set_col(nthvert, proj<3>((Projection*ModelView).invert_transpose()*embed<4>(model->normal(iface, nthvert), 0.f)));
+//         Vec4f gl_Vertex = Projection*ModelView*embed<4>(model->vert(iface, nthvert));
+//         varying_tri.set_col(nthvert, gl_Vertex);
+//         ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
+//         return gl_Vertex;
+//     }
+
+//     virtual bool fragment(Vec3f bar, TGAColor &color) {
+//         Vec3f bn = (varying_nrm*bar).normalize();
+//         Vec2f uv = varying_uv*bar;
+
+//         mat<3,3,float> A;
+//         A[0] = ndc_tri.col(1) - ndc_tri.col(0);
+//         A[1] = ndc_tri.col(2) - ndc_tri.col(0);
+//         A[2] = bn;
+
+//         mat<3,3,float> AI = A.invert();
+
+//         Vec3f i = AI * Vec3f(varying_uv[0][1] - varying_uv[0][0], varying_uv[0][2] - varying_uv[0][0], 0);
+//         Vec3f j = AI * Vec3f(varying_uv[1][1] - varying_uv[1][0], varying_uv[1][2] - varying_uv[1][0], 0);
+
+//         mat<3,3,float> B;
+//         B.set_col(0, i.normalize());
+//         B.set_col(1, j.normalize());
+//         B.set_col(2, bn);
+
+//         Vec3f n = (B*model->normal(uv)).normalize();
+
+//         float diff = std::max(0.f, n*light_dir_transformed);
+//         color = model->diffuse(uv)*diff;
+
+//         return false;
+//     }
+// };
+
 struct PhongShader : public IShader {
     mat<2,3,float> varying_uv;  // triangle uv coordinates, written by the vertex shader, read by the fragment shader
     mat<3,3,float> varying_nrm; // normal per vertex to be interpolated by FS
     mat<4,3,float> varying_tri;
+    mat<3,3,float> view_tri; //triagnle in view coordinates
+    mat<3,3,float> ndc_tri;
     mat<4,4,float> uniform_m;
     mat<4,4,float> uniform_mti;
+    
 
     virtual Vec4f vertex(int iface, int nthvert) {
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         varying_nrm.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 0.f)));
         Vec4f gl_Vertex = Viewport*Projection*ModelView*embed<4>(model->vert(iface, nthvert));
         varying_tri.set_col(nthvert, gl_Vertex);
+        // ndc_tri, varying_tri, view_tri, I have tried. cause slighty changed showing as suffix _2 _3 .tga
+        //ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
+        ndc_tri.set_col(nthvert, model->vert(iface, nthvert));
+        view_tri.set_col(nthvert, proj<3>(ModelView*embed<4>(model->vert(iface, nthvert))));
         return gl_Vertex;
     }
 
     virtual bool fragment(Vec3f bar, TGAColor &color) {
         Vec3f bn = (varying_nrm*bar).normalize();
+        
         Vec2f uv = varying_uv*bar;
-        Vec3f l = proj<3>(uniform_mti*embed<4>(light_dir)).normalize();
-        float diff = std::max(0.f, bn*l);
+        //care this embed<4>(light_dir, 0.f) use embed<4>(light_dir, 1.f(default)) will be different. looks like light coming from another direction.
+        Vec3f l = proj<3>(uniform_m*embed<4>(light_dir, 0.f)).normalize();
+
+        mat<3,3,float> A; //to transform to tangent basis vector
+        //suffix _4.
+        // A[1] = proj<3>(varying_tri.col(2)/varying_tri.col(2)[3]-varying_tri.col(0)/varying_tri.col(0)[3]);
+        // A[0] = proj<3>(varying_tri.col(1)/varying_tri.col(1)[3]-varying_tri.col(0)/varying_tri.col(0)[3]);
+        //sufix _6
+        // A[1] = proj<3>(varying_tri.col(2)-varying_tri.col(0));
+        // A[0] = proj<3>(varying_tri.col(1)-varying_tri.col(0));
+        // suffix _5
+        // A[0] = view_tri.col(1)-view_tri.col(0);
+        // A[1] = view_tri.col(2)-view_tri.col(0);
+        // suffix _7 with ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
+        // suffix _8 with ndc_tri.set_col(nthvert, model->vert(iface, nthvert));
+        A[0] = ndc_tri.col(1)-ndc_tri.col(0);
+        A[1] = ndc_tri.col(2)-ndc_tri.col(0);
+        A[2] = bn;
+        mat<3,3,float> A_it = A.invert();
+        Vec3f i = A_it * Vec3f(varying_uv[0][1]-varying_uv[0][0], varying_uv[0][2]-varying_uv[0][0], 0);
+        Vec3f j = A_it * Vec3f(varying_uv[1][1]-varying_uv[1][0], varying_uv[1][2]-varying_uv[1][0], 0);
+        mat<3,3,float> B;
+        B.set_col(0, i.normalize());
+        B.set_col(1, j.normalize());
+        B.set_col(2, bn);
+        // B[0] = i.normalize();
+        // B[1] = j.normalize();
+        // B[2] = bn;
+        //B = B.transpose();
+        Vec3f n = (B*model->normal(uv)).normalize();
+
+        float diff = std::min(1.f, std::max(0.f, n*l));
         color = model->diffuse(uv)*diff;
+        //color = TGAColor(255,255,255,255)*diff;
         return false;
     }
 };
@@ -115,6 +200,7 @@ int main(int argc, char** argv) {
 
     //GouraudShader shader;
     PhongShader shader;
+    //authorShader shader;
     shader.uniform_m = Projection*ModelView;
     shader.uniform_mti = (Projection*ModelView).invert_transpose();
     for (int i=0; i<model->nfaces(); i++) {
@@ -128,20 +214,20 @@ int main(int argc, char** argv) {
 
     image.  flip_vertically(); // to place the origin in the bottom left corner of the image
     zbuffer.flip_vertically();
-    image.  write_tga_file("output_my_phongshader.tga");
-    zbuffer.write_tga_file("zbuffer_my_phongshader.tga");
+    image.  write_tga_file("output_my_phongshader_tangent_t.tga");
+    zbuffer.write_tga_file("zbuffer_my_phongshader_tangent_t.tga");
 
-    { // dump z-buffer (debugging purposes only)
-        TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
-        for (int i=0; i<width; i++) {
-            for (int j=0; j<height; j++) {
-                //unsigned char color  = ((zbuffer[i+j*width]+1)/2)*255;
-                zbimage.set(i, j, TGAColor(zbuffer_f[i+j*width]));
-            }
-        }
-        zbimage.flip_vertically(); // i want to have the origin at the left bottom corner of the image
-        zbimage.write_tga_file("zbimage_phongshader.tga");
-    }
+    // { // dump z-buffer (debugging purposes only)
+    //     TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
+    //     for (int i=0; i<width; i++) {
+    //         for (int j=0; j<height; j++) {
+    //             //unsigned char color  = ((zbuffer[i+j*width]+1)/2)*255;
+    //             zbimage.set(i, j, TGAColor(zbuffer_f[i+j*width]));
+    //         }
+    //     }
+    //     zbimage.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+    //     zbimage.write_tga_file("zbimage_phongshader.tga");
+    // }
     delete [] zbuffer_f;
     delete model;
     return 0;
