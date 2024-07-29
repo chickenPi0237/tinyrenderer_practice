@@ -26,15 +26,16 @@ struct DepthShader : public IShader {
     virtual Vec4f vertex(int iface, int nthvert) {
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
         gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
-        varying_tri.set_col(proj<3>(nthvert, gl_Vertex/gl_Vertex[3]));
+        varying_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
         return gl_Vertex;
     }
 
     virtual bool fragment(Vec3f bar, TGAColor &color) {
         Vec3f p = varying_tri*bar;
         color = TGAColor(255,255,255,255)*(p.z/depth);
+        return false;
     }
-}
+};
 
 struct PhongShader : public IShader {
     mat<2,3,float> varying_uv;  // triangle uv coordinates, written by the vertex shader, read by the fragment shader
@@ -168,7 +169,7 @@ int main(int argc, char** argv) {
     lookat(light_dir, center, up);
     viewport(0, 0, width, height);
     projection(-1.f/(light_dir-center).norm());
-    TGAImage depth(width, height, TGAColor::RGB);
+    TGAImage depth(width, height, TGAImage::RGB);
     DepthShader depthshader;
     for (int i=0; i<model->nfaces(); i++) {
         Vec4f screen_coords[3];
