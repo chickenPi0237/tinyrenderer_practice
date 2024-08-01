@@ -11,6 +11,7 @@ Model *model     = NULL;
 float *shadow_buffer;
 const int width  = 800;
 const int height = 800;
+TGAImage frame(width, height, TGAImage::RGB);
 
 //light_dir here is start from surface, previous leesson i use start from light point. btw light_dir = - light_dir_from_light_point
 Vec3f light_dir(1,1,1);
@@ -154,6 +155,10 @@ struct GouraudShader : public IShader {
         //43.34 is just magic number to avoid z-fighting.
         float shadow = 0.3+0.7*(sp_b[2]+43.34>shadow_buffer[int(sp_b[0])+int(sp_b[1])*width]);
 
+        //ambiment from SSAO
+        Vec2f ssao_p = proj<2>(varying_tri*bar);
+        float ambient_SSAO = frame.get(ssao_p[0], ssao_p[1])[0] * (25/255.f);
+
         //normal(Vec2f) read from normal map, which stored normal vector's xyz as rgb.
         Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(uv))).normalize();
         //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
@@ -181,7 +186,7 @@ struct GouraudShader : public IShader {
         TGAColor c = model->diffuse(uv);
         color = c;
         //normally sum of scalar coefficient must be equal to 1
-        for(int i=0; i<3; ++i) { color[i]=std::min<float>(5 + c[i]*shadow*( + 0.8*diffuse + 0.6*spec) ,255); }
+        for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*( + 0.8*diffuse + 1.5*spec) ,255.f); }
         return false;                              // no, we do not discard this pixel
     }
     virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
@@ -252,7 +257,6 @@ int main(int argc, char** argv) {
         lookat(eye, center, up);
         viewport(0, 0, width, height);
         projection(-1.f/(eye-center).norm());
-        TGAImage frame(width, height, TGAImage::RGB);
         ZShader zshader;
         for (int i=0; i<model->nfaces(); i++) {
             Vec4f screen_coords[3];
@@ -281,8 +285,7 @@ int main(int argc, char** argv) {
                 frame.set(x, y, TGAColor(total*255, total*255, total*255));
             }
         }
-        frame.flip_vertically();
-        frame.write_tga_file("SSAO_diablo3_pose_more.tga");
+        
 
 
         //second pass, render all the thing.
@@ -301,10 +304,11 @@ int main(int argc, char** argv) {
             //triangle(screen_coords, shader, image, zbuffer);
             triangle_my(screen_coords, shader, image, zbuffer_f);
         }
-
+        frame.flip_vertically();
+        frame.write_tga_file("SSAO_diablo3_pose_more.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("output_my_diablo3_pose_more.tga");
+        image.  write_tga_file("output_my_diablo3_pose_shadow_SSAO.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)
