@@ -35,21 +35,27 @@ struct DepthShader : public IShader {
         color = TGAColor(255,255,255,255)*(p.z/depth);
         return false;
     }
+
+    virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color) {
+        std::cout << "do nothing";
+        return false;
+    }
 };
 
 struct ZShader : public IShader {
     mat<4,3,float> varying_tri;
 
-    DepthShader() : varying_tri(){}
-
     virtual Vec4f vertex(int iface, int nthvert) {
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
+        gl_Vertex = Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
         varying_tri.set_col(nthvert, gl_Vertex);
         return gl_Vertex;
     }
-
-    virtual bool fragment(Vec3f bar, TGAColor &color) {
+    virtual bool fragment(Vec3f bar, TGAColor &color){
+        color = TGAColor(0,0,0);
+        return false;
+    }
+    virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color) {
         color = TGAColor(0,0,0);
         return false;
     }
@@ -178,10 +184,13 @@ struct GouraudShader : public IShader {
         for(int i=0; i<3; ++i) { color[i]=std::min<float>(5 + c[i]*shadow*( + 0.8*diffuse + 0.6*spec) ,255); }
         return false;                              // no, we do not discard this pixel
     }
+    virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
+
 };
 
 float max_elevation_angle(float *zbuffer, Vec2f p, Vec2f dir) {
     float maxangle = 0;
+    //go 1000 step in each direction.
     for (float t=0.; t<1000.; t+=1.) {
         Vec2f cur = p + dir*t;
         if (cur.x>=width || cur.y>=height || cur.x<0 || cur.y<0) return maxangle;
@@ -191,6 +200,7 @@ float max_elevation_angle(float *zbuffer, Vec2f p, Vec2f dir) {
         float elevation = zbuffer[int(cur.x)+int(cur.y)*width]-zbuffer[int(p.x)+int(p.y)*width];
         maxangle = std::max(maxangle, atanf(elevation/distance));
     }
+    //result will in range 0~90 degree.
     return maxangle;
 }
 
@@ -211,9 +221,9 @@ int main(int argc, char** argv) {
         shadow_buffer = new float[width*height];
         float* abiment_buffer = new float[width*height];
         for(int i=0; i<width*height; ++i){
-            zbuffer_f[i] = shadow_buffer[i] = -std::numeric_limits<float>::max();
+            zbuffer_f[i] = shadow_buffer[i] = abiment_buffer[i] = -std::numeric_limits<float>::max();
         }
-        //first pass, find the shadow map. basically watch obj from light source so we can determine where we can't see aka where shadow should occure.
+        // //first pass, find the shadow map. basically watch obj from light source so we can determine where we can't see aka where shadow should occure.
         lookat(light_dir, center, up);
         viewport(0, 0, width, height);
         projection(-1.f/(light_dir-center).norm());
@@ -231,8 +241,14 @@ int main(int argc, char** argv) {
         depth.write_tga_file("depth_diablo3_pose_more.tga");
 
         mat<4,4,float> shadow_m = Viewport*Projection*ModelView;
+        // ambient occulison pass
+        // screen space ambient occlusion.
+        // algorithm : 
+        // emit rays outward from it in UV space.
+        //     ex: up/down/right/left
+        // record max slope at each direction ray go through
+        // calculate how "open" or "occluded" is this point. if all max slope at every direction is 0, it is open.
 
-        //ambient occulison pass
         lookat(eye, center, up);
         viewport(0, 0, width, height);
         projection(-1.f/(eye-center).norm());
@@ -241,26 +257,32 @@ int main(int argc, char** argv) {
         for (int i=0; i<model->nfaces(); i++) {
             Vec4f screen_coords[3];
             for (int j=0; j<3; j++) {
-                zshader.vertex(i, j);
+                //didn't use screen_coords, but code can't run successfully without a variable to assign.
+                screen_coords[j] = zshader.vertex(i, j);
             }
             //triangle(screen_coords, shader, image, zbuffer);
-            
+            //std::cout << zshader.varying_tri[2];
             triangle_my(zshader.varying_tri, zshader, frame, abiment_buffer);
         }
         for (int x=0; x<width; x++) {
             for (int y=0; y<height; y++) {
                 if (abiment_buffer[x+y*width] < -1e5) continue;
                 float total = 0;
+                //use 8 direction to approximate result. should use solid angle.
                 for (float a=0; a<M_PI*2-1e-4; a += M_PI/4) {
+                    // M_PI/2 - maxnangle, because, if maxangle bigger, the point should be darker.
                     total += M_PI/2 - max_elevation_angle(abiment_buffer, Vec2f(x, y), Vec2f(cos(a), sin(a)));
                 }
+                // convert degree to 0~1.
                 total /= (M_PI/2)*8;
+                // pow 100 to result reasonable ambient light feeling. the higher the more parts is dark(lower value).
+                //https://www.symbolab.com/solver/functions-calculator/f%5Cleft(x%5Cright)%3Dx%5E%7B100%7D?or=input to visulize function.
                 total = pow(total, 100.f);
                 frame.set(x, y, TGAColor(total*255, total*255, total*255));
             }
         }
         frame.flip_vertically();
-        frame.write_tga_file("framebuffer.tga");
+        frame.write_tga_file("SSAO_diablo3_pose_more.tga");
 
 
         //second pass, render all the thing.

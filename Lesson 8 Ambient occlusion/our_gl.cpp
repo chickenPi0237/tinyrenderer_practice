@@ -14,9 +14,11 @@ void viewport(int x, int y, int w, int h) {
     Viewport[0][3] = x+w/2.f;
     Viewport[1][3] = y+h/2.f;
     Viewport[2][3] = depth/2.f;
+    //Viewport[2][3] = 1.f;
     Viewport[0][0] = w/2.f;
     Viewport[1][1] = h/2.f;
     Viewport[2][2] = depth/2.f;
+    //Viewport[2][2] = 0.f;
 }
 
 void projection(float coeff) {
@@ -143,6 +145,79 @@ void triangle_my(Vec4f *pts, IShader &shader, TGAImage &image, float* zbuffer) {
             if (!discard) {
                 //zbuffer.set(P.x, P.y, TGAColor(frag_depth));
                 zbuffer[P.y*image.get_width()+P.x] = frag_depth;
+                image.set(P.x, P.y, color);
+            }
+        }
+    }
+}
+// void triangle_my(Vec4f* pts, IShader &shader, TGAImage &image, float* zbuffer) {
+//     mat<3,2,float> pts2;
+//     for (int i=0; i<3; i++) pts2[i] = proj<2>(pts[i]/pts[i][3]);
+
+//     Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
+//     Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+//     Vec2f clamp(image.get_width()-1, image.get_height()-1);
+//     for (int i=0; i<3; i++) {
+//         for (int j=0; j<2; j++) {
+//             bboxmin[j] = std::max(0.f,      std::min(bboxmin[j], pts2[i][j]));
+//             bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts2[i][j]));
+//         }
+//     }
+//     Vec2i P;
+//     TGAColor color;
+//     for (P.x=bboxmin.x; P.x<=bboxmax.x; P.x++) {
+//         for (P.y=bboxmin.y; P.y<=bboxmax.y; P.y++) {
+//             Vec3f bc_screen  = barycentric(pts2[0], pts2[1], pts2[2], P);
+//             Vec3f bc_clip    = Vec3f(bc_screen.x/pts[0][3], bc_screen.y/pts[1][3], bc_screen.z/pts[2][3]);
+//             bc_clip = bc_clip/(bc_clip.x+bc_clip.y+bc_clip.z);
+//             //std::cout << std::endl << pts[0][2] << pts[1][2] << pts[2][2] << std::endl;
+//             float frag_depth = Vec3f(pts[0][2], pts[1][2], pts[2][2])*bc_clip;
+//             if (bc_screen.x<0 || bc_screen.y<0 || bc_screen.z<0 || zbuffer[P.x+P.y*image.get_width()]>frag_depth) continue;
+//             bool discard = shader.fragment(Vec3f(P.x, P.y, frag_depth), bc_clip, color);
+//             if (!discard) {
+//                 zbuffer[P.x+P.y*image.get_width()] = frag_depth;
+//                 image.set(P.x, P.y, color);
+//             }
+//         }
+//     }
+// }
+
+
+
+void triangle_my(mat<4,3,float> &clipc, IShader &shader, TGAImage &image, float* zbuffer) {
+    //author use this viewport while doing ambiment occlussion, but the following code shows that use original Viewport doesn't inflect result.
+    Matrix Viewport_SSAO = Viewport;
+    Viewport_SSAO[2][2] = 0.f;
+    Viewport_SSAO[2][3] = 1.f;
+    mat<4,3,float> a = Viewport*clipc;
+    mat<4,3,float> b = Viewport_SSAO*clipc;
+    //std::cout << a << b << std::endl;
+    mat<3,4,float> pts  = (Viewport*clipc).transpose(); // transposed to ease access to each of the points
+    mat<3,2,float> pts2;
+    for (int i=0; i<3; i++) pts2[i] = proj<2>(pts[i]/pts[i][3]);
+
+    Vec2f bboxmin( std::numeric_limits<float>::max(),  std::numeric_limits<float>::max());
+    Vec2f bboxmax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+    Vec2f clamp(image.get_width()-1, image.get_height()-1);
+    for (int i=0; i<3; i++) {
+        for (int j=0; j<2; j++) {
+            bboxmin[j] = std::max(0.f,      std::min(bboxmin[j], pts2[i][j]));
+            bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts2[i][j]));
+        }
+    }
+    Vec2i P;
+    TGAColor color;
+    for (P.x=bboxmin.x; P.x<=bboxmax.x; P.x++) {
+        for (P.y=bboxmin.y; P.y<=bboxmax.y; P.y++) {
+            Vec3f bc_screen  = barycentric(pts2[0], pts2[1], pts2[2], P);
+            Vec3f bc_clip    = Vec3f(bc_screen.x/pts[0][3], bc_screen.y/pts[1][3], bc_screen.z/pts[2][3]);
+            bc_clip = bc_clip/(bc_clip.x+bc_clip.y+bc_clip.z);
+            //std::cout << clipc[2] << std::endl;
+            float frag_depth = clipc[2]*bc_clip;
+            if (bc_screen.x<0 || bc_screen.y<0 || bc_screen.z<0 || zbuffer[P.x+P.y*image.get_width()]>frag_depth) continue;
+            bool discard = shader.fragment( bc_clip, color);
+            if (!discard) {
+                zbuffer[P.x+P.y*image.get_width()] = frag_depth;
                 image.set(P.x, P.y, color);
             }
         }
