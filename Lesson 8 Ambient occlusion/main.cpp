@@ -159,6 +159,9 @@ struct GouraudShader : public IShader {
         Vec2f ssao_p = proj<2>(varying_tri*bar);
         float ambient_SSAO = frame.get(ssao_p[0], ssao_p[1])[0] * (25/255.f);
 
+        //add glowmap
+        TGAColor glow = model->glow(uv);
+
         //normal(Vec2f) read from normal map, which stored normal vector's xyz as rgb.
         Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(uv))).normalize();
         //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
@@ -186,7 +189,8 @@ struct GouraudShader : public IShader {
         TGAColor c = model->diffuse(uv);
         color = c;
         //normally sum of scalar coefficient must be equal to 1
-        for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*( + 0.8*diffuse + 1.5*spec) ,255.f); }
+        for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*( + 0.8*diffuse + 1.5*spec) + glow[i]*3.f ,255.f); }
+        //color = glow + color;
         return false;                              // no, we do not discard this pixel
     }
     virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
@@ -243,7 +247,7 @@ int main(int argc, char** argv) {
             triangle_my(screen_coords, depthshader, depth, shadow_buffer);
         }
         depth.flip_vertically();
-        depth.write_tga_file("depth_diablo3_pose_more.tga");
+        depth.write_tga_file("depth_african_head_more.tga");
 
         mat<4,4,float> shadow_m = Viewport*Projection*ModelView;
         // ambient occulison pass
@@ -305,10 +309,10 @@ int main(int argc, char** argv) {
             triangle_my(screen_coords, shader, image, zbuffer_f);
         }
         frame.flip_vertically();
-        frame.write_tga_file("SSAO_diablo3_pose_more.tga");
+        frame.write_tga_file("SSAO_african_head_more.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("output_my_diablo3_pose_shadow_SSAO.tga");
+        image.  write_tga_file("output_my_african_head_shadow_SSAO_glow.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)

@@ -3,7 +3,7 @@
 #include <sstream>
 #include "model.h"
 
-Model::Model(const char *filename) : verts_(), faces_(), norms_(), uv_(), diffusemap_(), normalmap_(), specularmap_() {
+Model::Model(const char *filename) : verts_(), faces_(), norms_(), uv_(), diffusemap_(), normalmap_(), specularmap_(), glowmap_() {
     std::ifstream in;
     in.open (filename, std::ifstream::in);
     if (in.fail()) return;
@@ -43,6 +43,7 @@ Model::Model(const char *filename) : verts_(), faces_(), norms_(), uv_(), diffus
     //load_texture(filename, "_grid.tga", diffusemap_);
     load_texture(filename, "_nm.tga",      normalmap_);
     load_texture(filename, "_spec.tga",    specularmap_);
+    load_texture(filename, "_glow.tga", glowmap_);
 }
 
 Model::~Model() {}
@@ -100,6 +101,11 @@ Vec2f Model::uv(int iface, int nthvert) {
 float Model::specular(Vec2f uvf) {
     Vec2i uv(uvf[0]*specularmap_.get_width(), uvf[1]*specularmap_.get_height());
     return specularmap_.get(uv[0], uv[1])[0]/1.f;
+}
+
+TGAColor Model::glow(Vec2f uvf){
+    Vec2i uv(uvf[0]*glowmap_.get_width(), uvf[1]*glowmap_.get_height());
+    return glowmap_.get(uv[0], uv[1]);
 }
 
 Vec3f Model::normal(int iface, int nthvert) {
