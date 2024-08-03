@@ -234,15 +234,15 @@ struct FlatShader : public IShader{
     }
     virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
     virtual bool fragment(Vec3f bar, TGAColor &color){
-        Vec3f flat_normal = cross((varying_tri[1]-varying_tri[0]), (varying_tri[2]-varying_tri[0]));
-        flat_normal = proj<3>(uniform_mti*embed<4>(flat_normal, 0.f));
+        //flat_normal no need to transform by uniform_mti becasue varying_tri is transformed.
+        Vec3f flat_normal = cross((varying_tri.col(1)-varying_tri.col(0)), (varying_tri.col(2)-varying_tri.col(0)));
         flat_normal = flat_normal.normalize();
         Vec2f uv = varying_uv*bar;
-        Vec3f l = proj<3>(uniform_m*embed<4>(light_dir)).normalize();
+        //transform light_dir, so light's coordinates will be in world coordinates. otherwise will be in screen coordinates.
+        Vec3f l = proj<3>(uniform_mti*embed<4>(light_dir, 0.f)).normalize();
         float intensity = flat_normal*l;
         TGAColor c = model->diffuse(uv);
-        c = c*intensity;
-        color = c;
+        color = c*intensity;
         return false;
     }
 };
@@ -347,11 +347,11 @@ int main(int argc, char** argv) {
         lookat(eye, center, up);
         viewport(0, 0, width, height);
         projection(-1.f/(eye-center).norm());
-        faceContourShader shader;
-        //FlatShader shader;
+        //faceContourShader shader;
+        FlatShader shader;
         //GouraudShader shader;
-        // shader.uniform_m = Projection*ModelView;
-        // shader.uniform_mti = (Projection*ModelView).invert_transpose();
+        shader.uniform_m = Projection*ModelView;
+        shader.uniform_mti = (Projection*ModelView).invert_transpose();
         // shader.uniform_shadow = shadow_m*((Viewport*Projection*ModelView).invert());
         for (int i=0; i<model->nfaces(); i++) {
             Vec4f screen_coords[3];
@@ -359,18 +359,18 @@ int main(int argc, char** argv) {
                 screen_coords[j] = shader.vertex(i, j);
             }
             //contour
-            for(int j=0; j<3; j++){
-                line(proj<2>(screen_coords[j]), proj<2>(screen_coords[(j+1)%3]), image, TGAColor(255,255,255));
-            }
+            // for(int j=0; j<3; j++){
+            //     line(proj<2>(screen_coords[j]), proj<2>(screen_coords[(j+1)%3]), image, TGAColor(255,255,255));
+            // }
             //triangle(screen_coords, shader, image, zbuffer);
-            //triangle_my(screen_coords, shader, image, zbuffer_f);
+            triangle_my(screen_coords, shader, image, zbuffer_f);
             
         }
         // frame.flip_vertically();
         // frame.write_tga_file("SSAO_african_head_more.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("diablo3_pose_faceContour.tga");
+        image.  write_tga_file("diablo3_pose_FlatShader_intensity.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)

@@ -159,8 +159,8 @@ void triangle_my(Vec4f *pts, IShader &shader, TGAImage &image, float* zbuffer) {
             //int frag_depth = std::max(0, std::min(255, int(z/w+.5)));
 
             //somehow with offset, casuing rounding problem.
-            int frag_depth = int(z/w+.5);
-            //float frag_depth = z/w;
+            //int frag_depth = int(z/w+.5);
+            float frag_depth = z/w;
             //frag_depth = std::min(255, std::max(0, frag_depth));
 
             if (zbuffer[P.y*image.get_width()+P.x]>frag_depth) continue;
