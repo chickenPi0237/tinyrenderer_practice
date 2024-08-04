@@ -295,6 +295,7 @@ struct GouraudShader_add_normalmap : public IShader {
     mat<4,4,float> uniform_m;
     mat<4,4,float> uniform_mti;
     mat<3,3,float> varying_tri;
+    mat<3,3,float> varying_noraml;
 
     virtual Vec4f vertex(int iface, int nthvert) {
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
@@ -310,8 +311,11 @@ struct GouraudShader_add_normalmap : public IShader {
         //get interploated coordinates of texture.
         Vec2f uv = varying_uv*bar;
         //get interploated coordinates of normal.
-        Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(proj<2>(varying_tri*bar)), 0.f)).normalize();
-        
+        // Vec4f n_tmp = uniform_mti*embed<4>(model->normal(uv), 0.f);
+        // Vec3f n = proj<3>(n_tmp/n_tmp[3]).normalize();
+        //or ?
+        Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(uv), 0.f)).normalize();
+
         //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
         //check comparison of no_light_transform/light_transform pictures. especially *l-100_e300
         //to my code, uniform_mti*light_dir is work, author use uniform_m.
@@ -430,7 +434,8 @@ int main(int argc, char** argv) {
         projection(-1.f/(eye-center).norm());
         //faceContourShader shader;
         //FlatShader shader;
-        GouraudShader_wo_ shader;
+        //GouraudShader_wo_ shader;
+        GouraudShader_add_normalmap shader;
         //GouraudShader shader;
         shader.uniform_m = Projection*ModelView;
         shader.uniform_mti = (Projection*ModelView).invert_transpose();
@@ -452,7 +457,7 @@ int main(int argc, char** argv) {
         // frame.write_tga_file("SSAO_african_head_more.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("diablo3_pose_GouraudShader_wo_.tga");
+        image.  write_tga_file("diablo3_pose_GouraudShader_add_normalmap.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)
