@@ -247,6 +247,87 @@ struct FlatShader : public IShader{
     }
 };
 
+struct GouraudShader_wo_ : public IShader {
+    //Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+    mat<2,3,float> varying_uv;
+    mat<4,4,float> uniform_m;
+    mat<4,4,float> uniform_mti;
+    mat<3,3,float> varying_tri;
+    mat<3,3,float> varying_noraml;
+
+    virtual Vec4f vertex(int iface, int nthvert) {
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
+        gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
+        //after affine mapping, normal vector should mapped by inverse(transpose(map)).
+        //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
+        varying_uv.set_col(nthvert, model->uv(iface, nthvert));
+        varying_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
+        varying_noraml.set_col(nthvert, model->normal(iface, nthvert));
+        return gl_Vertex;
+    }
+
+    virtual bool fragment(Vec3f bar, TGAColor &color) {
+        //get interploated coordinates of texture.
+        Vec2f uv = varying_uv*bar;
+        //get interploated coordinates of normal.
+        Vec3f n = varying_noraml*bar;
+        n = n.normalize();
+        //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
+        //check comparison of no_light_transform/light_transform pictures. especially *l-100_e300
+        //to my code, uniform_mti*light_dir is work, author use uniform_m.
+        Vec3f i = proj<3>(uniform_mti*embed<4>(light_dir, 0.f)).normalize();
+
+        float diffuse = std::max(0.f, n*i);
+        //color = TGAColor(255, 255, 255)*intensity; // well duh
+        TGAColor c = model->diffuse(uv);
+        color = c*diffuse;
+        //normally sum of scalar coefficient must be equal to 1
+        //for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*( + 0.8*diffuse + 1.5*spec) + glow[i]*3.f ,255.f); }
+        //color = glow + color;
+        return false;                              // no, we do not discard this pixel
+    }
+    virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
+};
+
+struct GouraudShader_add_normalmap : public IShader {
+    //Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+    mat<2,3,float> varying_uv;
+    mat<4,4,float> uniform_m;
+    mat<4,4,float> uniform_mti;
+    mat<3,3,float> varying_tri;
+
+    virtual Vec4f vertex(int iface, int nthvert) {
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
+        gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
+        //after affine mapping, normal vector should mapped by inverse(transpose(map)).
+        //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
+        varying_uv.set_col(nthvert, model->uv(iface, nthvert));
+        varying_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
+        return gl_Vertex;
+    }
+
+    virtual bool fragment(Vec3f bar, TGAColor &color) {
+        //get interploated coordinates of texture.
+        Vec2f uv = varying_uv*bar;
+        //get interploated coordinates of normal.
+        Vec3f n = proj<3>(uniform_mti*embed<4>(model->normal(proj<2>(varying_tri*bar)), 0.f)).normalize();
+        
+        //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
+        //check comparison of no_light_transform/light_transform pictures. especially *l-100_e300
+        //to my code, uniform_mti*light_dir is work, author use uniform_m.
+        Vec3f i = proj<3>(uniform_mti*embed<4>(light_dir, 0.f)).normalize();
+
+        float diffuse = std::max(0.f, n*i);
+        //color = TGAColor(255, 255, 255)*intensity; // well duh
+        TGAColor c = model->diffuse(uv);
+        color = c*diffuse;
+        //normally sum of scalar coefficient must be equal to 1
+        //for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*( + 0.8*diffuse + 1.5*spec) + glow[i]*3.f ,255.f); }
+        //color = glow + color;
+        return false;                              // no, we do not discard this pixel
+    }
+    virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
+};
 
 float max_elevation_angle(float *zbuffer, Vec2f p, Vec2f dir) {
     float maxangle = 0;
@@ -348,7 +429,8 @@ int main(int argc, char** argv) {
         viewport(0, 0, width, height);
         projection(-1.f/(eye-center).norm());
         //faceContourShader shader;
-        FlatShader shader;
+        //FlatShader shader;
+        GouraudShader_wo_ shader;
         //GouraudShader shader;
         shader.uniform_m = Projection*ModelView;
         shader.uniform_mti = (Projection*ModelView).invert_transpose();
@@ -370,7 +452,7 @@ int main(int argc, char** argv) {
         // frame.write_tga_file("SSAO_african_head_more.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("diablo3_pose_FlatShader_intensity.tga");
+        image.  write_tga_file("diablo3_pose_GouraudShader_wo_.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)
