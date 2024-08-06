@@ -445,15 +445,20 @@ struct GouraudShader_add_spec : public IShader {
         Vec3f i = proj<3>(uniform_mti*embed<4>(light_dir, 0.f)).normalize();
 
         float diffuse = std::max(0.f, n*i);
-        float glossy_level = model->specular(uv);
-        Vec3f r = -i + 2*(n*i)*n;
-        float spec = r*eye.normalize();
+        //float glossy_level = model->specular(uv);
+        // Vec3f r = (n*(n*i*2.f) - i).normalize();;
+        // float spec = pow(std::max<float>(r*Vec3f(0,0,1), 0.f), 20+model->specular(uv)); //after Projection and ModelView, camera is lying on z-axis now, so eye is simply (0,0,1)
+        Vec3f eye_transformed = proj<3>(uniform_mti*embed<4>(eye)).normalize();
+        //std::cout << eye_transformed << std::endl;
+        int glossy_level = 50;
+        Vec3f h = (i+eye_transformed).normalize(); //same as (i+Vec3f(0,0,1)).normalize();
+        float spec = std::pow(std::max(n*h, 0.0f), glossy_level); 
         
         //color = TGAColor(255, 255, 255)*intensity; // well duh
         TGAColor c = model->diffuse(uv);
         color = c;
         //normally sum of scalar coefficient must be equal to 1
-        for(int i=0; i<3; ++i) { color[i]=std::min<float>(5 + c[i]*( + 0.8*diffuse + 1.5*spec),255.f); }
+        for(int i=0; i<3; ++i) { color[i]=std::min<float>(5 + c[i]*(0.8*diffuse + 0.8*spec),255.f); }
         return false;                              // no, we do not discard this pixel
     }
     virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
@@ -562,8 +567,8 @@ int main(int argc, char** argv) {
         //FlatShader shader;
         //GouraudShader_wo_ shader;
         //GouraudShader_add_normalmap shader;
-        GouraudShader_add_normalmap_tangent shader;
-        //GouraudShader_add_spec shader;
+        //GouraudShader_add_normalmap_tangent shader;
+        GouraudShader_add_spec shader;
         //GouraudShader shader;
         shader.uniform_m = Projection*ModelView;
         shader.uniform_mti = (Projection*ModelView).invert_transpose();
@@ -578,14 +583,14 @@ int main(int argc, char** argv) {
             //     line(proj<2>(screen_coords[j]), proj<2>(screen_coords[(j+1)%3]), image, TGAColor(255,255,255));
             // }
             //triangle(screen_coords, shader, image, zbuffer);
-            triangle_my(screen_coords, shader, image, zbuffer_f);
+            triangle_my(shader.dc_tri, shader, image, zbuffer_f);
             
         }
         // frame.flip_vertically();
         // frame.write_tga_file("SSAO_african_head_more.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("floor_GouraudShader_add_normalmap_tangent_wo_perspective_correction_2.tga");
+        image.  write_tga_file("diablo3_pose_GouraudShader_add_spec_perspective_correction_2.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)
