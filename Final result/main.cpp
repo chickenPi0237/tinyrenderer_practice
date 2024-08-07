@@ -757,37 +757,37 @@ int main(int argc, char** argv) {
         // record max slope at each direction ray go through
         // calculate how "open" or "occluded" is this point. if all max slope at every direction is 0, it is open.
 
-        lookat(eye, center, up);
-        viewport(0, 0, width, height);
-        projection(-1.f/(eye-center).norm());
-        ZShader zshader;
-        for (int i=0; i<model->nfaces(); i++) {
-            Vec4f screen_coords[3];
-            for (int j=0; j<3; j++) {
-                //didn't use screen_coords, but code can't run successfully without a variable to assign.
-                screen_coords[j] = zshader.vertex(i, j);
-            }
-            //triangle(screen_coords, shader, image, zbuffer);
-            //std::cout << zshader.varying_tri[2];
-            triangle_my(zshader.varying_tri, zshader, SSAO_frame, abiment_buffer);
-        }
-        for (int x=0; x<width; x++) {
-            for (int y=0; y<height; y++) {
-                if (abiment_buffer[x+y*width] < -1e5) continue;
-                float total = 0;
-                //use 8 direction to approximate result. should use solid angle.
-                for (float a=0; a<M_PI*2-1e-4; a += M_PI/4) {
-                    // M_PI/2 - maxnangle, because, if maxangle bigger, the point should be darker.
-                    total += M_PI/2 - max_elevation_angle(abiment_buffer, Vec2f(x, y), Vec2f(cos(a), sin(a)));
-                }
-                // convert degree to 0~1.
-                total /= (M_PI/2)*8;
-                // pow 100 to result reasonable ambient light feeling. the higher the more parts is dark(lower value).
-                //https://www.symbolab.com/solver/functions-calculator/f%5Cleft(x%5Cright)%3Dx%5E%7B100%7D?or=input to visulize function.
-                total = pow(total, 100.f);
-                SSAO_frame.set(x, y, TGAColor(total*255, total*255, total*255));
-            }
-        }
+        // lookat(eye, center, up);
+        // viewport(0, 0, width, height);
+        // projection(-1.f/(eye-center).norm());
+        // ZShader zshader;
+        // for (int i=0; i<model->nfaces(); i++) {
+        //     Vec4f screen_coords[3];
+        //     for (int j=0; j<3; j++) {
+        //         //didn't use screen_coords, but code can't run successfully without a variable to assign.
+        //         screen_coords[j] = zshader.vertex(i, j);
+        //     }
+        //     //triangle(screen_coords, shader, image, zbuffer);
+        //     //std::cout << zshader.varying_tri[2];
+        //     triangle_my(zshader.varying_tri, zshader, SSAO_frame, abiment_buffer);
+        // }
+        // for (int x=0; x<width; x++) {
+        //     for (int y=0; y<height; y++) {
+        //         if (abiment_buffer[x+y*width] < -1e5) continue;
+        //         float total = 0;
+        //         //use 8 direction to approximate result. should use solid angle.
+        //         for (float a=0; a<M_PI*2-1e-4; a += M_PI/4) {
+        //             // M_PI/2 - maxnangle, because, if maxangle bigger, the point should be darker.
+        //             total += M_PI/2 - max_elevation_angle(abiment_buffer, Vec2f(x, y), Vec2f(cos(a), sin(a)));
+        //         }
+        //         // convert degree to 0~1.
+        //         total /= (M_PI/2)*8;
+        //         // pow 100 to result reasonable ambient light feeling. the higher the more parts is dark(lower value).
+        //         //https://www.symbolab.com/solver/functions-calculator/f%5Cleft(x%5Cright)%3Dx%5E%7B100%7D?or=input to visulize function.
+        //         total = pow(total, 100.f);
+        //         SSAO_frame.set(x, y, TGAColor(total*255, total*255, total*255));
+        //     }
+        // }
         
 
 
@@ -807,7 +807,7 @@ int main(int argc, char** argv) {
         //GouraudShader shader;
         shader.uniform_m = Projection*ModelView;
         shader.uniform_mti = (Projection*ModelView).invert_transpose();
-        shader.uniform_shadow = shadow_m*((Viewport*Projection*ModelView).invert());
+        //shader.uniform_shadow = shadow_m*((Viewport*Projection*ModelView).invert());
         for (int i=0; i<model->nfaces(); i++) {
             Vec4f screen_coords[3];
             for (int j=0; j<3; j++) {
@@ -825,7 +825,7 @@ int main(int argc, char** argv) {
         // SSAO_frame.write_tga_file("SSAO_diablo3_pose.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("diablo3_pose_GouraudShader_add_glow_floor_perspective_correction.tga");
+        image.  write_tga_file("diablo3_pose_GouraudShader_add_glow_perspective_correction_fix_n.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)
