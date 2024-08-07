@@ -11,7 +11,7 @@ Model *model     = NULL;
 float *shadow_buffer;
 const int width  = 800;
 const int height = 800;
-TGAImage frame(width, height, TGAImage::RGB);
+TGAImage SSAO_frame(width, height, TGAImage::RGB);
 
 //light_dir here is start from surface, previous leesson i use start from light point. btw light_dir = - light_dir_from_light_point
 Vec3f light_dir(1,1,1);
@@ -48,7 +48,7 @@ struct ZShader : public IShader {
 
     virtual Vec4f vertex(int iface, int nthvert) {
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        gl_Vertex = Projection*ModelView*gl_Vertex;     // transform it to screen coordinates
+        gl_Vertex = Projection*ModelView*gl_Vertex;     // not transform to screen coordinates yet.
         varying_tri.set_col(nthvert, gl_Vertex);
         return gl_Vertex;
     }
@@ -157,7 +157,7 @@ struct GouraudShader : public IShader {
 
         //ambiment from SSAO
         Vec2f ssao_p = proj<2>(varying_tri*bar);
-        float ambient_SSAO = frame.get(ssao_p[0], ssao_p[1])[0] * (25/255.f);
+        float ambient_SSAO = SSAO_frame.get(ssao_p[0], ssao_p[1])[0] * (25/255.f);
 
         //add glowmap
         TGAColor glow = model->glow(uv);
@@ -561,11 +561,16 @@ struct GouraudShader_add_SSAO : public IShader {
 
     virtual bool fragment(Vec3f bar, TGAColor &color) {
         //add shadow
-        //transform tri vertex to shadow buffer coordinates
+        //transform tri vertex to shadow buffer coordinates,
+        //notice uniform_shadow is shadow_m*(Viewport*Projection*ModelView).invert() which invert the transform of dc_tri then transform to shadow
         Vec4f sp_b = (uniform_shadow*embed<4>(Viewport*dc_tri*bar));
         sp_b = sp_b/sp_b[3];
         //43.34 is just magic number to avoid z-fighting.
         float shadow = 0.3+0.7*(sp_b[2]+43.34>shadow_buffer[int(sp_b[0])+int(sp_b[1])*width]);
+
+        //ambiment from SSAO
+        Vec2f ssao_p = proj<2>(Viewport*dc_tri*bar);
+        float ambient_SSAO = SSAO_frame.get(ssao_p[0], ssao_p[1])[0] * (5/255.f);
         
         //get interploated coordinates of texture.
         Vec2f uv = varying_uv*bar;
@@ -604,12 +609,91 @@ struct GouraudShader_add_SSAO : public IShader {
         TGAColor c = model->diffuse(uv);
         color = c;
         //normally sum of scalar coefficient must be equal to 1
-        for(int i=0; i<3; ++i) { color[i]=std::min<float>(5 + c[i]*shadow*(0.8*diffuse + 0.8*spec),255.f); }
+        for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*(0.8*diffuse + 0.8*spec),255.f); }
         return false;                              // no, we do not discard this pixel
     }
     virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
 };
+//normalmap_tangent + specular + shadow + SSAO + glow
+struct GouraudShader_add_glow : public IShader {
+    //Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+    mat<2,3,float> varying_uv;
+    mat<4,4,float> uniform_m;
+    mat<4,4,float> uniform_mti;
+    mat<3,3,float> ndc_tri;     // triangle in normalized device coordinates
+    mat<3,3,float> varying_normal;
+    mat<4,3,float> dc_tri;
+    mat<4,4,float> uniform_shadow;
 
+    virtual Vec4f vertex(int iface, int nthvert) {
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
+        gl_Vertex = Projection*ModelView*gl_Vertex;
+        dc_tri.set_col(nthvert, gl_Vertex);     // note here didn't transform to screen coordinates
+        //after affine mapping, normal vector should mapped by inverse(transpose(map)).
+        //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
+        varying_uv.set_col(nthvert, model->uv(iface, nthvert));
+        ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
+        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 1.f)));
+        return gl_Vertex;
+    }
+
+    virtual bool fragment(Vec3f bar, TGAColor &color) {
+        //add shadow
+        //transform tri vertex to shadow buffer coordinates,
+        //notice uniform_shadow is shadow_m*(Viewport*Projection*ModelView).invert() which invert the transform of dc_tri then transform to shadow
+        Vec4f sp_b = (uniform_shadow*embed<4>(Viewport*dc_tri*bar));
+        sp_b = sp_b/sp_b[3];
+        //43.34 is just magic number to avoid z-fighting.
+        float shadow = 0.3+0.7*(sp_b[2]+43.34>shadow_buffer[int(sp_b[0])+int(sp_b[1])*width]);
+
+        //ambiment from SSAO
+        Vec2f ssao_p = proj<2>(Viewport*dc_tri*bar);
+        float ambient_SSAO = SSAO_frame.get(ssao_p[0], ssao_p[1])[0] * (5/255.f);
+        
+        //get interploated coordinates of texture.
+        Vec2f uv = varying_uv*bar;
+        //get interploated coordinates of normal.
+        Vec3f n = (varying_normal*bar).normalize();
+
+        mat<3,3,float> A;
+        A[0] = ndc_tri.col(1)-ndc_tri.col(0);
+        A[1] = ndc_tri.col(2)-ndc_tri.col(0);
+        A[2] = n;
+        A = A.invert();
+
+        mat<3,3,float> Darboux;
+        Darboux.set_col(0, (A*Vec3f(varying_uv[0][1]-varying_uv[0][0], varying_uv[0][2]-varying_uv[0][0], 0)).normalize());
+        Darboux.set_col(1, (A*Vec3f(varying_uv[1][1]-varying_uv[1][0], varying_uv[1][2]-varying_uv[1][0], 0)).normalize());
+        Darboux.set_col(2, n);
+
+        n = (Darboux*model->normal(uv)).normalize();
+        
+        //why light_dir need transform, isn't light_dir stationary? if we don't transform light_dir, it would be a light come from the screen coordinate. 
+        //check comparison of no_light_transform/light_transform pictures. especially *l-100_e300
+        //to my code, uniform_mti*light_dir is work, author use uniform_m.
+        Vec3f i = proj<3>(uniform_mti*embed<4>(light_dir, 0.f)).normalize();
+
+        float diffuse = std::max(0.f, n*i);
+        //float glossy_level = model->specular(uv);
+        // Vec3f r = (n*(n*i*2.f) - i).normalize();;
+        // float spec = pow(std::max<float>(r*Vec3f(0,0,1), 0.f), 20+model->specular(uv)); //after Projection and ModelView, camera is lying on z-axis now, so eye is simply (0,0,1)
+        Vec3f eye_transformed = proj<3>(uniform_mti*embed<4>(eye)).normalize();
+        //std::cout << eye_transformed << std::endl;
+        int glossy_level = 50;
+        Vec3f h = (i+eye_transformed).normalize(); //same as (i+Vec3f(0,0,1)).normalize();
+        float spec = std::pow(std::max(n*h, 0.0f), glossy_level); 
+        
+        //glow texture
+        TGAColor glow = model->glow(uv);
+
+        TGAColor c = model->diffuse(uv);
+        color = c;
+        //normally sum of scalar coefficient must be equal to 1
+        for(int i=0; i<3; ++i) { color[i]=std::min<float>(ambient_SSAO + c[i]*shadow*(0.8*diffuse + 0.8*spec) + 1.6f*glow[i],255.f); }
+        return false;                              // no, we do not discard this pixel
+    }
+    virtual bool fragment(Vec3f gl_FragCoord, Vec3f bar, TGAColor &color){return true;}
+};
 
 
 float max_elevation_angle(float *zbuffer, Vec2f p, Vec2f dir) {
@@ -665,45 +749,45 @@ int main(int argc, char** argv) {
         depth.write_tga_file("diablo3_pose_shadow.tga");
 
         mat<4,4,float> shadow_m = Viewport*Projection*ModelView;
-        // // ambient occulison pass
-        // // screen space ambient occlusion.
-        // // algorithm : 
-        // // emit rays outward from it in UV space.
-        // //     ex: up/down/right/left
-        // // record max slope at each direction ray go through
-        // // calculate how "open" or "occluded" is this point. if all max slope at every direction is 0, it is open.
+        // ambient occulison pass
+        // screen space ambient occlusion.
+        // algorithm : 
+        // emit rays outward from it in UV space.
+        //     ex: up/down/right/left
+        // record max slope at each direction ray go through
+        // calculate how "open" or "occluded" is this point. if all max slope at every direction is 0, it is open.
 
-        // lookat(eye, center, up);
-        // viewport(0, 0, width, height);
-        // projection(-1.f/(eye-center).norm());
-        // ZShader zshader;
-        // for (int i=0; i<model->nfaces(); i++) {
-        //     Vec4f screen_coords[3];
-        //     for (int j=0; j<3; j++) {
-        //         //didn't use screen_coords, but code can't run successfully without a variable to assign.
-        //         screen_coords[j] = zshader.vertex(i, j);
-        //     }
-        //     //triangle(screen_coords, shader, image, zbuffer);
-        //     //std::cout << zshader.varying_tri[2];
-        //     triangle_my(zshader.varying_tri, zshader, frame, abiment_buffer);
-        // }
-        // for (int x=0; x<width; x++) {
-        //     for (int y=0; y<height; y++) {
-        //         if (abiment_buffer[x+y*width] < -1e5) continue;
-        //         float total = 0;
-        //         //use 8 direction to approximate result. should use solid angle.
-        //         for (float a=0; a<M_PI*2-1e-4; a += M_PI/4) {
-        //             // M_PI/2 - maxnangle, because, if maxangle bigger, the point should be darker.
-        //             total += M_PI/2 - max_elevation_angle(abiment_buffer, Vec2f(x, y), Vec2f(cos(a), sin(a)));
-        //         }
-        //         // convert degree to 0~1.
-        //         total /= (M_PI/2)*8;
-        //         // pow 100 to result reasonable ambient light feeling. the higher the more parts is dark(lower value).
-        //         //https://www.symbolab.com/solver/functions-calculator/f%5Cleft(x%5Cright)%3Dx%5E%7B100%7D?or=input to visulize function.
-        //         total = pow(total, 100.f);
-        //         frame.set(x, y, TGAColor(total*255, total*255, total*255));
-        //     }
-        // }
+        lookat(eye, center, up);
+        viewport(0, 0, width, height);
+        projection(-1.f/(eye-center).norm());
+        ZShader zshader;
+        for (int i=0; i<model->nfaces(); i++) {
+            Vec4f screen_coords[3];
+            for (int j=0; j<3; j++) {
+                //didn't use screen_coords, but code can't run successfully without a variable to assign.
+                screen_coords[j] = zshader.vertex(i, j);
+            }
+            //triangle(screen_coords, shader, image, zbuffer);
+            //std::cout << zshader.varying_tri[2];
+            triangle_my(zshader.varying_tri, zshader, SSAO_frame, abiment_buffer);
+        }
+        for (int x=0; x<width; x++) {
+            for (int y=0; y<height; y++) {
+                if (abiment_buffer[x+y*width] < -1e5) continue;
+                float total = 0;
+                //use 8 direction to approximate result. should use solid angle.
+                for (float a=0; a<M_PI*2-1e-4; a += M_PI/4) {
+                    // M_PI/2 - maxnangle, because, if maxangle bigger, the point should be darker.
+                    total += M_PI/2 - max_elevation_angle(abiment_buffer, Vec2f(x, y), Vec2f(cos(a), sin(a)));
+                }
+                // convert degree to 0~1.
+                total /= (M_PI/2)*8;
+                // pow 100 to result reasonable ambient light feeling. the higher the more parts is dark(lower value).
+                //https://www.symbolab.com/solver/functions-calculator/f%5Cleft(x%5Cright)%3Dx%5E%7B100%7D?or=input to visulize function.
+                total = pow(total, 100.f);
+                SSAO_frame.set(x, y, TGAColor(total*255, total*255, total*255));
+            }
+        }
         
 
 
@@ -717,7 +801,9 @@ int main(int argc, char** argv) {
         //GouraudShader_add_normalmap shader;
         //GouraudShader_add_normalmap_tangent shader;
         //GouraudShader_add_spec shader;
-        GouraudShader_add_shadow shader;
+        //GouraudShader_add_shadow shader;
+        //GouraudShader_add_SSAO shader;
+        GouraudShader_add_glow shader;
         //GouraudShader shader;
         shader.uniform_m = Projection*ModelView;
         shader.uniform_mti = (Projection*ModelView).invert_transpose();
@@ -735,11 +821,11 @@ int main(int argc, char** argv) {
             triangle_my(shader.dc_tri, shader, image, zbuffer_f);
             
         }
-        // frame.flip_vertically();
-        // frame.write_tga_file("SSAO_african_head_more.tga");
+        // SSAO_frame.flip_vertically();
+        // SSAO_frame.write_tga_file("SSAO_diablo3_pose.tga");
         image.  flip_vertically(); // to place the origin in the bottom left corner of the image
         //zbuffer.flip_vertically();
-        image.  write_tga_file("diablo3_pose_GouraudShader_add_shadow_perspective_correction_2.tga");
+        image.  write_tga_file("diablo3_pose_GouraudShader_add_glow_floor_perspective_correction.tga");
         //zbuffer.write_tga_file("zbuffer_my_shadow.tga");
 
         // { // dump z-buffer (debugging purposes only)
