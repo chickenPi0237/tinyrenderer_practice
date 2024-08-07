@@ -354,7 +354,7 @@ struct GouraudShader_add_normalmap_tangent : public IShader {
         //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
-        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 1.f)));
+        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 0.f)));
         return gl_Vertex;
     }
 
@@ -416,7 +416,7 @@ struct GouraudShader_add_spec : public IShader {
         //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
-        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 1.f)));
+        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 0.f)));
         return gl_Vertex;
     }
 
@@ -482,7 +482,7 @@ struct GouraudShader_add_shadow : public IShader {
         //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
-        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 1.f)));
+        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 0.f)));
         return gl_Vertex;
     }
 
@@ -555,7 +555,7 @@ struct GouraudShader_add_SSAO : public IShader {
         //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
-        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 1.f)));
+        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 0.f)));
         return gl_Vertex;
     }
 
@@ -633,7 +633,7 @@ struct GouraudShader_add_glow : public IShader {
         //varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert)*light_dir); // get diffuse lighting intensity 
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         ndc_tri.set_col(nthvert, proj<3>(gl_Vertex/gl_Vertex[3]));
-        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 1.f)));
+        varying_normal.set_col(nthvert, proj<3>(uniform_mti*embed<4>(model->normal(iface, nthvert), 0.f)));
         return gl_Vertex;
     }
 
